@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ================================================================
+  SETUP INSTRUCTIONS
+  ================================================================
+  STEP 1 — Run attendance_setup.gs inside your Google Sheet
+           (Extensions → Apps Script → run createAttendanceSystem)
+  STEP 2 — Paste the FORM_ACTION_URL and 8 ENTRY IDs from the
+           Execution Log into the CONFIG block below
+  STEP 3 — Upload this file to GitHub as index.html
+           Enable GitHub Pages (Settings → Pages → main branch)
+  STEP 4 — Share the GitHub Pages URL with students
+  ================================================================
+-->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#800000" />
+  <title>UChicago Attendance</title>
+  <style>
+    :root {
+      --maroon : #800000;
+      --border : #d4c5b0;
+      --green  : #2e7d32;
+      --red    : #c62828;
+      --amber  : #e65100;
+      --light  : #f5f0eb;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--light);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100%;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 0 40px rgba(0,0,0,.08);
+    }
+
+    /* ── Header ── */
+    .card-header {
+      background: var(--maroon);
+      color: #fff;
+      padding: env(safe-area-inset-top, 1rem) 1.5rem 1.25rem;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .card-header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: .01em; }
+    .card-header p  { font-size: .78rem; opacity: .82; margin-top: .3rem; }
+
+    /* ── Body ── */
+    .card-body {
+      padding: 1.5rem 1.5rem 2rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Labels ── */
+    label {
+      display: block;
+      font-size: .7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--maroon);
+      margin-bottom: .3rem;
+    }
+    .hint {
+      font-size: .72rem;
+      color: #999;
+      margin-top: -.65rem;
+      margin-bottom: .75rem;
+    }
+
+    /* ── Inputs — 16px stops iOS Safari from zooming on focus ── */
+    input[type="text"],
+    input[type="email"] {
+      width: 100%;
+      padding: .75rem 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 16px;
+      color: #111;
+      background: #fff;
+      margin-bottom: 1rem;
+      -webkit-appearance: none;
+      appearance: none;
+      transition: border-color .15s;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--maroon);
+      box-shadow: 0 0 0 3px rgba(128,0,0,.12);
+    }
+
+    /* ── Two-column row for Course / Section ── */
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 1rem;
+    }
+
+    /* ── GPS banner ── */
+    .gps-status {
+      border-radius: 8px;
+      padding: .85rem 1rem;
+      font-size: .9rem;
+      margin-bottom: 1.25rem;
+      line-height: 1.45;
+      display: flex;
+      gap: .6rem;
+      align-items: flex-start;
+    }
+    .gps-status .icon { font-size: 1.15rem; flex-shrink: 0; padding-top: .05rem; }
+    .acquiring { background: #fff8e1; color: var(--amber); border: 1.5px solid #ffe082; }
+    .verified  { background: #e8f5e9; color: var(--green); border: 1.5px solid #a5d6a7; }
+    .blocked   { background: #ffebee; color: var(--red);   border: 1.5px solid #ef9a9a; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0 1.25rem; }
+
+    /* ── Submit button — 52px min tap target ── */
+    .btn {
+      width: 100%;
+      min-height: 52px;
+      padding: .9rem 1rem;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      cursor: pointer;
+      background: var(--maroon);
+      color: #fff;
+      margin-top: auto;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(.98); opacity: .9; }
+
+    .note {
+      font-size: .72rem;
+      color: #999;
+      text-align: center;
+      margin-top: .9rem;
+      line-height: 1.55;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    /* ── Success screen ── */
+    .success {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .success .check { font-size: 4rem; }
+    .success h2 { color: var(--maroon); font-size: 1.4rem; margin: .8rem 0 .4rem; }
+    .success p  { font-size: .9rem; color: #555; line-height: 1.6; }
+
+    /* ── Desktop refinements ── */
+    @media (min-width: 520px) {
+      body { padding: 2rem 1rem; justify-content: center; }
+      .card {
+        min-height: unset;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+      }
+      .card-header { padding: 1.5rem 2rem 1.25rem; border-radius: 12px 12px 0 0; }
+      .card-body   { padding: 1.75rem 2rem 2rem; }
+      .btn { margin-top: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="card-header">
+    <h1>Class Attendance Check-In</h1>
+    <p>University of Chicago &nbsp;·&nbsp; <span id="jsDate"></span></p>
+  </div>
+
+  <div class="card-body" id="cardBody">
+
+    <label for="firstName">First Name</label>
+    <input type="text" id="firstName" placeholder="Jane"
+           autocomplete="given-name" autocorrect="off" spellcheck="false" />
+
+    <label for="lastName">Last Name</label>
+    <input type="text" id="lastName" placeholder="Doe"
+           autocomplete="family-name" autocorrect="off" spellcheck="false" />
+
+    <label for="email">UChicago Email</label>
+    <input type="email" id="email" placeholder="jdoe@uchicago.edu"
+           autocomplete="email" autocapitalize="none" inputmode="email" />
+
+    <!-- Course Number + Section side by side -->
+    <div class="row-2">
+      <div>
+        <label for="course">Course Number</label>
+        <input type="text" id="course" placeholder="e.g. 31012"
+               autocomplete="off" autocorrect="off" inputmode="numeric" />
+      </div>
+      <div>
+        <label for="section">Section</label>
+        <input type="text" id="section" placeholder="e.g. IP01"
+               autocomplete="off" autocorrect="off" />
+      </div>
+    </div>
+    <p class="hint">Example: Course 31012 &nbsp;/&nbsp; Section IP01</p>
+
+    <hr class="divider" />
+
+    <!-- GPS banner — only location UI; no coordinate fields exist -->
+    <div class="gps-status acquiring" id="gpsStatus">
+      <span class="icon">📡</span>
+      <span id="gpsMsg">Verifying your location — tap <strong>Allow</strong> when prompted…</span>
+    </div>
+
+    <button class="btn" id="submitBtn" disabled>Submit Attendance</button>
+
+    <p class="note">
+      🔒 @uchicago.edu accounts only<br>
+      Location is verified via GPS and cannot be entered manually.
+    </p>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   PASTE YOUR VALUES FROM THE APPS SCRIPT EXECUTION LOG HERE
+   ============================================================ */
+var CONFIG = {
+  FORM_ACTION_URL  : "https://docs.google.com/forms/d/e/1FAIpQLSckoPO7L9CWkXjYcJwT5qbHerffnF4akyZlHjA6cTWW8kotIA/formResponse",
+  ENTRY : {
+    firstName : "entry.1059948063",
+    lastName  : "entry.614219016",
+    email     : "entry.127993398",
+    course    : "entry.950176431",
+    section   : "entry.79482633",
+    latitude  : "entry.525517666",
+    longitude : "entry.1991253350",
+    accuracy  : "entry.15579935"
+  }
+};
+/* ============================================================ */
+
+// Private GPS state — never written to the DOM
+var _lat = null, _lng = null, _acc = null, _gpsOk = false;
+
+document.getElementById("jsDate").textContent = new Date().toLocaleDateString(
+  "en-US", { weekday:"long", year:"numeric", month:"long", day:"numeric" }
+);
+
+// ── GPS: starts immediately on page load ─────────────────────────────────────
+(function startGPS() {
+  if (!navigator.geolocation) {
+    return setGPS("blocked",
+      "🚫 Geolocation not supported. Please use Chrome or Safari.");
+  }
+  var watchId = navigator.geolocation.watchPosition(
+    function onFix(pos) {
+      _lat = pos.coords.latitude;
+      _lng = pos.coords.longitude;
+      _acc = Math.round(pos.coords.accuracy);
+      _gpsOk = true;
+      setGPS("verified", "✅ Location verified. You may now submit.");
+      checkReady();
+      setTimeout(function() { navigator.geolocation.clearWatch(watchId); }, 15000);
+    },
+    function onErr(err) {
+      _gpsOk = false;
+      var msg;
+      switch (err.code) {
+        case err.PERMISSION_DENIED:
+          msg = "🚫 Location denied. Enable location in your browser settings and reload."; break;
+        case err.POSITION_UNAVAILABLE:
+          msg = "🚫 Location unavailable. Enable GPS on your device and reload."; break;
+        case err.TIMEOUT:
+          msg = "🚫 Location timed out. Please reload and try again."; break;
+        default:
+          msg = "🚫 Could not get location. Please reload.";
+      }
+      setGPS("blocked", msg);
+      checkReady();
+    },
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+  );
+})();
+
+// ── Validation ────────────────────────────────────────────────────────────────
+["firstName","lastName","email","course","section"].forEach(function(id) {
+  document.getElementById(id).addEventListener("input", checkReady);
+});
+
+function checkReady() {
+  var ok =
+    document.getElementById("firstName").value.trim().length > 0 &&
+    document.getElementById("lastName").value.trim().length  > 0 &&
+    /^[^\s@]+@uchicago\.edu$/i.test(document.getElementById("email").value.trim()) &&
+    document.getElementById("course").value.trim().length   > 0 &&
+    document.getElementById("section").value.trim().length  > 0 &&
+    _gpsOk;
+  document.getElementById("submitBtn").disabled = !ok;
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+document.getElementById("submitBtn").addEventListener("click", function() {
+  if (!_gpsOk) { alert("Location not verified. Please wait or reload."); return; }
+
+  var firstName = document.getElementById("firstName").value.trim();
+  var lastName  = document.getElementById("lastName").value.trim();
+  var email     = document.getElementById("email").value.trim();
+  var course    = document.getElementById("course").value.trim();
+  var section   = document.getElementById("section").value.trim();
+
+  if (!/^[^\s@]+@uchicago\.edu$/i.test(email)) {
+    alert("Please enter a valid @uchicago.edu email address."); return;
+  }
+
+  document.getElementById("submitBtn").disabled    = true;
+  document.getElementById("submitBtn").textContent = "Submitting…";
+
+  var iframe = document.createElement("iframe");
+  iframe.name = "sf"; iframe.style.display = "none";
+  document.body.appendChild(iframe);
+
+  var f = document.createElement("form");
+  f.method = "POST"; f.action = CONFIG.FORM_ACTION_URL; f.target = "sf";
+
+  var data = {};
+  data[CONFIG.ENTRY.firstName] = firstName;
+  data[CONFIG.ENTRY.lastName]  = lastName;
+  data[CONFIG.ENTRY.email]     = email;
+  data[CONFIG.ENTRY.course]    = course;
+  data[CONFIG.ENTRY.section]   = section;
+  data[CONFIG.ENTRY.latitude]  = _lat.toFixed(7);
+  data[CONFIG.ENTRY.longitude] = _lng.toFixed(7);
+  data[CONFIG.ENTRY.accuracy]  = String(_acc);
+
+  Object.keys(data).forEach(function(k) {
+    var inp = document.createElement("input");
+    inp.type = "hidden"; inp.name = k; inp.value = data[k];
+    f.appendChild(inp);
+  });
+  document.body.appendChild(f);
+  f.submit();
+
+  setTimeout(function() {
+    document.getElementById("cardBody").innerHTML =
+      '<div class="success">' +
+      '<div class="check">✅</div>' +
+      '<h2>Attendance Recorded</h2>' +
+      '<p>Thank you,<br><strong>' + firstName + ' ' + lastName + '</strong></p>' +
+      '<p style="margin-top:.5rem">' + course + ' &nbsp;/&nbsp; ' + section + '</p>' +
+      '<p style="margin-top:.75rem;font-size:.8rem;color:#999">You may close this window.</p>' +
+      '</div>';
+  }, 1000);
+});
+
+function setGPS(cls, html) {
+  document.getElementById("gpsStatus").className = "gps-status " + cls;
+  document.getElementById("gpsMsg").innerHTML    = html;
+}
+</script>
+</body>
+</html>
